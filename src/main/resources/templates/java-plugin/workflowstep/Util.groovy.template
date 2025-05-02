@@ -1,15 +1,56 @@
 package com.plugin.${javaPluginClass.toLowerCase()};
 
+import com.dtolabs.rundeck.core.execution.workflow.steps.StepException
+import okhttp3.MediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody
 import org.rundeck.storage.api.PathUtil
 import org.rundeck.storage.api.StorageException
 import com.dtolabs.rundeck.core.storage.ResourceMeta
 import com.dtolabs.rundeck.plugins.step.PluginStepContext
+//{{utilImports}}
 
-/**
- * A “Util” class should be written to handle common methods for renderingOptions, retrieving keys from KeyStorage,
- * auth-settings, and any other generic methods that can be used for support across your suite.
- */
+
 class Util {
+
+    static OkHttpClient client
+
+    static Map<String,Object> makeHttpRequest(String url, String method = "GET", Map<String, String> headers = [:], String body = null, String mediaType = "application/json") {
+        // Build request body if applicable
+        RequestBody requestBody = null
+        if (body != null && method.toUpperCase() in ["POST", "PUT", "PATCH", "DELETE"]) {
+            MediaType contentType = MediaType.parse(mediaType)
+            requestBody = RequestBody.create(contentType, body.getBytes("UTF-8"))
+        }
+
+        // Build request
+        Request.Builder requestBuilder = new Request.Builder()
+                .url(url)
+                .method(method.toUpperCase(), requestBody)
+
+        // Add headers
+        headers.each { key, value ->
+            requestBuilder.addHeader(key, value)
+        }
+
+        Request request = requestBuilder.build()
+
+        try {
+            client.newCall(request).execute().withCloseable { response ->
+                def responseBody = response.body()?.string()
+                return [
+                        code   : response.code(),
+                        body   : responseBody,
+                        headers: response.headers().toMultimap()
+                ]
+            }
+        } catch (Exception e) {
+            throw new StepException("Request failed: \${e.message}", PluginFailureReason.APIRequestError)
+        }
+
+    }
+
     static String getPasswordFromKeyStorage(String path, PluginStepContext context){
         try{
             ResourceMeta contents = context.getExecutionContext().getStorageTree().getResource(path).getContents()
@@ -24,4 +65,6 @@ class Util {
             )
         }
     }
+
+    //{{utilMethods}}
 }
